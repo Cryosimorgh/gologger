@@ -1,42 +1,39 @@
-// logger-client/logger.go
-package logger
+package lg
 
 import (
 	"bytes"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
+	"strings"
 )
 
-type Logger struct {
-	serviceName string
-	loggerURL   string
-}
+func LogToService(level, message string) error {
+	client := &http.Client{}
+	url := fmt.Sprintf("http://%s:%s/%s", ServerIP, Port, strings.ToLower(level))
 
-func New(serviceName, loggerURL string) *Logger {
-	return &Logger{
-		serviceName: serviceName,
-		loggerURL:   loggerURL,
-	}
-}
-
-func (l *Logger) Log(level, message string) error {
-	entry := LogEntry{
-		Service:   l.serviceName,
-		Level:     level,
-		Message:   message,
-		Timestamp: time.Now(),
+	reqBody := struct {
+		Message string `json:"message"`
+	}{
+		Message: message,
 	}
 
-	jsonData, err := json.Marshal(entry)
+	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return fmt.Errorf("error marshaling log entry: %v", err)
+		return err
 	}
 
-	resp, err := http.Post(l.loggerURL+"/log", "application/json", bytes.NewBuffer(jsonData))
+	req, err := http.NewRequest("POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("error sending log: %v", err)
+		return err
+	}
+
+	req.Header.Set("X-Service-Name", ServiceName)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return err
 	}
 	defer resp.Body.Close()
 
@@ -47,21 +44,11 @@ func (l *Logger) Log(level, message string) error {
 	return nil
 }
 
-func (l *Logger) Info(message string) {
-	l.Log("INFO", message)
-}
-
-func (l *Logger) Error(message string) {
-	l.Log("ERROR", message)
-}
-
-func (l *Logger) Warn(message string) {
-	l.Log("WARN", message)
-}
-
-type LogEntry struct {
-	Service   string    `json:"service"`
-	Level     string    `json:"level"`
-	Message   string    `json:"message"`
-	Timestamp time.Time `json:"timestamp"`
-}
+var (
+	INFO        = "INFO"
+	WARN        = "WARN"
+	ERROR       = "ERROR"
+	ServiceName = "OverArching Server"
+	ServerIP    = ""
+	Port        = "8383"
+)
